@@ -42,6 +42,11 @@ func TestSmsProvider(t *testing.T) {
 					AccessKey:  "test_access_key",
 					Originator: "test_originator",
 				},
+				Solapi: conf.SolapiProviderConfiguration{
+					ApiKey:    "test_api_key",
+					ApiSecret: "test_api_secret",
+					From:      "test_from",
+				},
 				Vonage: conf.VonageProviderConfiguration{
 					ApiKey:    "test_api_key",
 					ApiSecret: "test_api_secret",
@@ -157,6 +162,32 @@ func (ts *SmsProviderTestSuite) TestMessagebirdSendSms() {
 	})
 
 	err = messagebirdProvider.SendSms(phone, message)
+	require.NoError(ts.T(), err)
+}
+
+func (ts *SmsProviderTestSuite) TestSolapiSendSms() {
+	defer gock.Off()
+	provider, err := NewSolapiProvider(ts.Config.Sms.Solapi)
+	require.NoError(ts.T(), err)
+
+	solapiProvider, ok := provider.(*SolapiProvider)
+	require.Equal(ts.T(), true, ok)
+
+	phone := "123456789"
+	message := "This is the sms code: 123456"
+
+	body := url.Values{
+		"from":       {solapiProvider.Config.From},
+		"to":         {phone},
+		"text":       {message},
+		"api_key":    {solapiProvider.Config.ApiKey},
+		"api_secret": {solapiProvider.Config.ApiSecret},
+	}
+
+	// TODO: make this more concrete / specific?
+	gock.New(solapiProvider.APIPath).Post("").MatchType("url").BodyString(body.Encode()).Reply(200)
+
+	err = solapiProvider.SendSms(phone, message)
 	require.NoError(ts.T(), err)
 }
 

@@ -197,6 +197,7 @@ type SmsProviderConfiguration struct {
 	Template     string                           `json:"template"`
 	Twilio       TwilioProviderConfiguration      `json:"twilio"`
 	Messagebird  MessagebirdProviderConfiguration `json:"messagebird"`
+	Solapi       SolapiProviderConfiguration      `json:"solapi"`
 	Textlocal    TextlocalProviderConfiguration   `json:"textlocal"`
 	Vonage       VonageProviderConfiguration      `json:"vonage"`
 }
@@ -210,6 +211,12 @@ type TwilioProviderConfiguration struct {
 type MessagebirdProviderConfiguration struct {
 	AccessKey  string `json:"access_key" split_words:"true"`
 	Originator string `json:"originator" split_words:"true"`
+}
+
+type SolapiProviderConfiguration struct {
+	ApiKey    string `json:"api_key" split_words:"true"`
+	ApiSecret string `json:"api_secret" split_words:"true"`
+	From      string `json:"from" split_words:"true"`
 }
 
 type TextlocalProviderConfiguration struct {
@@ -476,6 +483,19 @@ func (t *MessagebirdProviderConfiguration) Validate() error {
 	}
 	if t.Originator == "" {
 		return errors.New("missing Messagebird originator")
+	}
+	return nil
+}
+
+func (t *SolapiProviderConfiguration) Validate() error {
+	if t.ApiKey == "" {
+		return errors.New("missing Solapi API key")
+	}
+	if t.ApiSecret == "" {
+		return errors.New("missing Solapi API secret")
+	}
+	if t.From == "" {
+		return errors.New("missing Solapi 'from' parameter")
 	}
 	return nil
 }
