@@ -62,6 +62,15 @@ func ParsePhoneNumber(phone string) (string, string) {
 	return match[1], match[2]
 }
 
+func (t *SolapiProvider) SendMessage(phone string, message string, channel string) error {
+	switch channel {
+	case SMSProvider:
+		return t.SendSms(phone, message)
+	default:
+		return fmt.Errorf("channel type %q is not supported for Solapi", channel)
+	}
+}
+
 func (t *SolapiProvider) SendSms(phone string, message string) error {
 	country, phone := ParsePhoneNumber(phone)
 	client := &http.Client{Timeout: defaultTimeout}
