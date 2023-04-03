@@ -11,11 +11,11 @@ import (
 	"github.com/gobwas/glob"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/sirupsen/logrus"
 )
 
 const defaultMinPasswordLength int = 6
 const defaultChallengeExpiryDuration float64 = 300
+const defaultFlowStateExpiryDuration time.Duration = 300 * time.Second
 
 // OAuthProviderConfiguration holds all config related to external account providers.
 type OAuthProviderConfiguration struct {
@@ -136,28 +136,29 @@ type EmailContentConfiguration struct {
 }
 
 type ProviderConfiguration struct {
-	Apple                 OAuthProviderConfiguration `json:"apple"`
-	Azure                 OAuthProviderConfiguration `json:"azure"`
-	Bitbucket             OAuthProviderConfiguration `json:"bitbucket"`
-	Discord               OAuthProviderConfiguration `json:"discord"`
-	Facebook              OAuthProviderConfiguration `json:"facebook"`
-	Github                OAuthProviderConfiguration `json:"github"`
-	Gitlab                OAuthProviderConfiguration `json:"gitlab"`
-	Google                OAuthProviderConfiguration `json:"google"`
-	Notion                OAuthProviderConfiguration `json:"notion"`
-	Keycloak              OAuthProviderConfiguration `json:"keycloak"`
-	Linkedin              OAuthProviderConfiguration `json:"linkedin"`
-	Spotify               OAuthProviderConfiguration `json:"spotify"`
-	Slack                 OAuthProviderConfiguration `json:"slack"`
-	Twitter               OAuthProviderConfiguration `json:"twitter"`
-	Twitch                OAuthProviderConfiguration `json:"twitch"`
-	WorkOS                OAuthProviderConfiguration `json:"workos"`
-	Email                 EmailProviderConfiguration `json:"email"`
-	Phone                 PhoneProviderConfiguration `json:"phone"`
-	Zoom                  OAuthProviderConfiguration `json:"zoom"`
-	IosBundleId           string                     `json:"ios_bundle_id" split_words:"true"`
-	RedirectURL           string                     `json:"redirect_url"`
-	AllowedIdTokenIssuers []string                   `json:"allowed_id_token_issuers" split_words:"true"`
+	Apple                   OAuthProviderConfiguration `json:"apple"`
+	Azure                   OAuthProviderConfiguration `json:"azure"`
+	Bitbucket               OAuthProviderConfiguration `json:"bitbucket"`
+	Discord                 OAuthProviderConfiguration `json:"discord"`
+	Facebook                OAuthProviderConfiguration `json:"facebook"`
+	Github                  OAuthProviderConfiguration `json:"github"`
+	Gitlab                  OAuthProviderConfiguration `json:"gitlab"`
+	Google                  OAuthProviderConfiguration `json:"google"`
+	Notion                  OAuthProviderConfiguration `json:"notion"`
+	Keycloak                OAuthProviderConfiguration `json:"keycloak"`
+	Linkedin                OAuthProviderConfiguration `json:"linkedin"`
+	Spotify                 OAuthProviderConfiguration `json:"spotify"`
+	Slack                   OAuthProviderConfiguration `json:"slack"`
+	Twitter                 OAuthProviderConfiguration `json:"twitter"`
+	Twitch                  OAuthProviderConfiguration `json:"twitch"`
+	WorkOS                  OAuthProviderConfiguration `json:"workos"`
+	Email                   EmailProviderConfiguration `json:"email"`
+	Phone                   PhoneProviderConfiguration `json:"phone"`
+	Zoom                    OAuthProviderConfiguration `json:"zoom"`
+	IosBundleId             string                     `json:"ios_bundle_id" split_words:"true"`
+	RedirectURL             string                     `json:"redirect_url"`
+	AllowedIdTokenIssuers   []string                   `json:"allowed_id_token_issuers" split_words:"true"`
+	FlowStateExpiryDuration time.Duration              `json:"flow_state_expiry_duration" split_words:"true"`
 }
 
 type SMTPConfiguration struct {
@@ -315,8 +316,6 @@ func LoadGlobal(filename string) (*GlobalConfiguration, error) {
 	}
 
 	if config.SAML.Enabled {
-		logrus.Warn("WARNING: SAML is an incomplete feature and should not be enabled for production use!")
-
 		if err := config.SAML.PopulateFields(config.API.ExternalURL); err != nil {
 			return nil, err
 		}
@@ -416,6 +415,9 @@ func (config *GlobalConfiguration) ApplyDefaults() error {
 	}
 	if config.MFA.ChallengeExpiryDuration < defaultChallengeExpiryDuration {
 		config.MFA.ChallengeExpiryDuration = defaultChallengeExpiryDuration
+	}
+	if config.External.FlowStateExpiryDuration < defaultFlowStateExpiryDuration {
+		config.External.FlowStateExpiryDuration = defaultFlowStateExpiryDuration
 	}
 
 	if len(config.External.AllowedIdTokenIssuers) == 0 {

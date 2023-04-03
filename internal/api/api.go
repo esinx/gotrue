@@ -85,7 +85,7 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 
 	r.Route("/callback", func(r *router) {
 		r.UseBypass(logger)
-		r.Use(api.loadOAuthState)
+		r.Use(api.loadFlowState)
 
 		r.Get("/", api.ExternalProviderCallback)
 		r.Post("/", api.ExternalProviderCallback)
@@ -153,27 +153,26 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 			})
 		})
 
-		if api.config.SAML.Enabled {
-			r.Route("/sso", func(r *router) {
+		r.Route("/sso", func(r *router) {
+			r.Use(api.requireSAMLEnabled)
+			r.With(api.limitHandler(
+				// Allow requests at the specified rate per 5 minutes.
+				tollbooth.NewLimiter(api.config.RateLimitSso/(60*5), &limiter.ExpirableOptions{
+					DefaultExpirationTTL: time.Hour,
+				}).SetBurst(30),
+			)).With(api.verifyCaptcha).Post("/", api.SingleSignOn)
+
+			r.Route("/saml", func(r *router) {
+				r.Get("/metadata", api.SAMLMetadata)
+
 				r.With(api.limitHandler(
 					// Allow requests at the specified rate per 5 minutes.
-					tollbooth.NewLimiter(api.config.RateLimitSso/(60*5), &limiter.ExpirableOptions{
+					tollbooth.NewLimiter(api.config.SAML.RateLimitAssertion/(60*5), &limiter.ExpirableOptions{
 						DefaultExpirationTTL: time.Hour,
 					}).SetBurst(30),
-				)).With(api.verifyCaptcha).Post("/", api.SingleSignOn)
-
-				r.Route("/saml", func(r *router) {
-					r.Get("/metadata", api.SAMLMetadata)
-
-					r.With(api.limitHandler(
-						// Allow requests at the specified rate per 5 minutes.
-						tollbooth.NewLimiter(api.config.SAML.RateLimitAssertion/(60*5), &limiter.ExpirableOptions{
-							DefaultExpirationTTL: time.Hour,
-						}).SetBurst(30),
-					)).Post("/acs", api.SAMLACS)
-				})
+				)).Post("/acs", api.SAMLACS)
 			})
-		}
+		})
 
 		r.Route("/admin", func(r *router) {
 			r.Use(api.requireAdminCredentials)
@@ -205,28 +204,28 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 
 			r.Post("/generate_link", api.GenerateLink)
 
-			if api.config.SAML.Enabled {
-				r.Route("/sso", func(r *router) {
-					r.Route("/providers", func(r *router) {
-						r.Get("/", api.adminSSOProvidersList)
-						r.Post("/", api.adminSSOProvidersCreate)
+			r.Route("/sso", func(r *router) {
+				r.Route("/providers", func(r *router) {
+					r.Get("/", api.adminSSOProvidersList)
+					r.Post("/", api.adminSSOProvidersCreate)
 
-						r.Route("/{idp_id}", func(r *router) {
-							r.Use(api.loadSSOProvider)
+					r.Route("/{idp_id}", func(r *router) {
+						r.Use(api.loadSSOProvider)
 
-							r.Get("/", api.adminSSOProvidersGet)
-							r.Put("/", api.adminSSOProvidersUpdate)
-							r.Delete("/", api.adminSSOProvidersDelete)
-						})
+						r.Get("/", api.adminSSOProvidersGet)
+						r.Put("/", api.adminSSOProvidersUpdate)
+						r.Delete("/", api.adminSSOProvidersDelete)
 					})
 				})
-			}
+			})
+
 		})
 	})
 
 	corsHandler := cors.New(cors.Options{
 		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Client-IP", "X-Client-Info", audHeaderName, useCookieHeader},
+		ExposedHeaders:   []string{"X-Total-Count", "Link"},
 		AllowCredentials: true,
 	})
 
