@@ -81,10 +81,15 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 	r.UseBypass(xffmw.Handler)
 	r.Use(recoverer)
 
+	if globalConfig.DB.CleanupEnabled {
+		r.UseBypass(api.databaseCleanup)
+	}
+
 	r.Get("/health", api.HealthCheck)
 
 	r.Route("/callback", func(r *router) {
 		r.UseBypass(logger)
+		r.Use(api.isValidExternalHost)
 		r.Use(api.loadFlowState)
 
 		r.Get("/", api.ExternalProviderCallback)
@@ -93,6 +98,7 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 
 	r.Route("/", func(r *router) {
 		r.UseBypass(logger)
+		r.Use(api.isValidExternalHost)
 
 		r.Get("/settings", api.Settings)
 

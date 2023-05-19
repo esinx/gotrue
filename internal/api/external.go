@@ -21,8 +21,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const PKCE = "pkce"
-
 // ExternalProviderClaims are the JWT claims sent as the state in the external oauth provider signup flow
 type ExternalProviderClaims struct {
 	NetlifyMicroserviceClaims
@@ -47,9 +45,8 @@ func (a *API) ExternalProviderRedirect(w http.ResponseWriter, r *http.Request) e
 	query := r.URL.Query()
 	providerType := query.Get("provider")
 	scopes := query.Get("scopes")
-	flowType := query.Get("flow_type")
 	codeChallenge := query.Get("code_challenge")
-	codeChallengeMethodParam := query.Get("code_challenge_method")
+	codeChallengeMethod := query.Get("code_challenge_method")
 
 	p, err := a.Provider(ctx, providerType, scopes)
 	if err != nil {
@@ -70,25 +67,18 @@ func (a *API) ExternalProviderRedirect(w http.ResponseWriter, r *http.Request) e
 	redirectURL := a.getRedirectURLOrReferrer(r, query.Get("redirect_to"))
 	log := observability.GetLogEntry(r)
 	log.WithField("provider", providerType).Info("Redirecting to external provider")
+	if err := validatePKCEParams(codeChallengeMethod, codeChallenge); err != nil {
+		return err
+	}
+	flowType := getFlowFromChallenge(codeChallenge)
 
 	flowStateID := ""
-	switch true {
-	case flowType == PKCE && (codeChallenge == "" || codeChallengeMethodParam == ""):
-		return badRequestError("code challenge and code challenge method are required to perform PKCE")
-	case flowType == PKCE && codeChallenge != "" && codeChallengeMethodParam != "":
-		var codeChallengeMethod models.CodeChallengeMethod
-		switch strings.ToLower(codeChallengeMethodParam) {
-		case "plain":
-			codeChallengeMethod = models.Plain
-		case "s256":
-			codeChallengeMethod = models.SHA256
-		default:
-			return badRequestError("code challenge method is unsupported")
-		}
-		if valid, err := isValidCodeChallenge(codeChallenge); !valid {
+	if flowType == models.PKCEFlow {
+		codeChallengeMethodType, err := models.ParseCodeChallengeMethod(codeChallengeMethod)
+		if err != nil {
 			return err
 		}
-		flowState, err := models.NewFlowState(providerType, codeChallenge, codeChallengeMethod)
+		flowState, err := models.NewFlowState(providerType, codeChallenge, codeChallengeMethodType, models.OAuth)
 		if err != nil {
 			return err
 		}
@@ -96,12 +86,6 @@ func (a *API) ExternalProviderRedirect(w http.ResponseWriter, r *http.Request) e
 			return err
 		}
 		flowStateID = flowState.ID.String()
-	// Implicit Flow
-	case flowType == "":
-		break
-	default:
-		// Should not reach here
-		return badRequestError("invalid request parameters")
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, ExternalProviderClaims{
@@ -241,9 +225,10 @@ func (a *API) internalExternalProviderCallback(w http.ResponseWriter, r *http.Re
 	if flowState != nil {
 		// This means that the callback is using PKCE
 		// Set the flowState.AuthCode to the query param here
-		q := url.Values{}
-		q.Set("code", flowState.AuthCode)
-		rurl += "?" + q.Encode()
+		rurl, err = a.prepPKCERedirectURL(rurl, flowState.AuthCode)
+		if err != nil {
+			return err
+		}
 	} else if token != nil {
 		q := url.Values{}
 		q.Set("provider_token", providerAccessToken)
@@ -392,7 +377,8 @@ func (a *API) createAccountFromExternalIdentity(tx *storage.Connection, r *http.
 		if !emailData.Verified && !config.Mailer.Autoconfirm {
 			mailer := a.Mailer(ctx)
 			referrer := a.getReferrer(r)
-			if terr = sendConfirmation(tx, user, mailer, config.SMTP.MaxFrequency, referrer, config.Mailer.OtpLength); terr != nil {
+			externalURL := getExternalHost(ctx)
+			if terr = sendConfirmation(tx, user, mailer, config.SMTP.MaxFrequency, referrer, externalURL, config.Mailer.OtpLength, models.ImplicitFlow); terr != nil {
 				if errors.Is(terr, MaxFrequencyLimitError) {
 					return nil, tooManyRequestsError("For security purposes, you can only request this once every minute")
 				}
@@ -525,43 +511,61 @@ func (a *API) loadExternalState(ctx context.Context, state string) (context.Cont
 func (a *API) Provider(ctx context.Context, name string, scopes string) (provider.Provider, error) {
 	config := a.config
 	name = strings.ToLower(name)
+	callbackURL := getExternalHost(ctx).String() + "/callback"
 
 	switch name {
 	case "apple":
+		config.External.Apple.RedirectURI = callbackURL
 		return provider.NewAppleProvider(config.External.Apple)
 	case "azure":
+		config.External.Azure.RedirectURI = callbackURL
 		return provider.NewAzureProvider(config.External.Azure, scopes)
 	case "bitbucket":
+		config.External.Bitbucket.RedirectURI = callbackURL
 		return provider.NewBitbucketProvider(config.External.Bitbucket)
 	case "discord":
+		config.External.Discord.RedirectURI = callbackURL
 		return provider.NewDiscordProvider(config.External.Discord, scopes)
 	case "github":
+		config.External.Github.RedirectURI = callbackURL
 		return provider.NewGithubProvider(config.External.Github, scopes)
 	case "gitlab":
+		config.External.Gitlab.RedirectURI = callbackURL
 		return provider.NewGitlabProvider(config.External.Gitlab, scopes)
 	case "google":
+		config.External.Google.RedirectURI = callbackURL
 		return provider.NewGoogleProvider(config.External.Google, scopes)
 	case "kakao":
 		return provider.NewKakaoProvider(config.External.Kakao, scopes)
 	case "keycloak":
+		config.External.Keycloak.RedirectURI = callbackURL
 		return provider.NewKeycloakProvider(config.External.Keycloak, scopes)
 	case "linkedin":
+		config.External.Linkedin.RedirectURI = callbackURL
 		return provider.NewLinkedinProvider(config.External.Linkedin, scopes)
 	case "facebook":
+		config.External.Facebook.RedirectURI = callbackURL
 		return provider.NewFacebookProvider(config.External.Facebook, scopes)
 	case "notion":
+		config.External.Notion.RedirectURI = callbackURL
 		return provider.NewNotionProvider(config.External.Notion)
 	case "spotify":
+		config.External.Spotify.RedirectURI = callbackURL
 		return provider.NewSpotifyProvider(config.External.Spotify, scopes)
 	case "slack":
+		config.External.Slack.RedirectURI = callbackURL
 		return provider.NewSlackProvider(config.External.Slack, scopes)
 	case "twitch":
+		config.External.Twitch.RedirectURI = callbackURL
 		return provider.NewTwitchProvider(config.External.Twitch, scopes)
 	case "twitter":
+		config.External.Twitter.RedirectURI = callbackURL
 		return provider.NewTwitterProvider(config.External.Twitter, scopes)
 	case "workos":
+		config.External.WorkOS.RedirectURI = callbackURL
 		return provider.NewWorkOSProvider(config.External.WorkOS)
 	case "zoom":
+		config.External.Zoom.RedirectURI = callbackURL
 		return provider.NewZoomProvider(config.External.Zoom)
 	default:
 		return nil, fmt.Errorf("Provider %s could not be found", name)
