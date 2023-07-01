@@ -41,7 +41,6 @@ require (
 require (
 	github.com/go-jose/go-jose/v3 v3.0.0 // indirect
 	github.com/gobuffalo/nulls v0.4.2 // indirect
-	github.com/supabase/mailme v0.0.0-20230628061017-01f68480c747 // indirect
 )
 
 require (
@@ -72,6 +71,7 @@ require (
 	github.com/fatih/structs v1.1.0
 	github.com/gobuffalo/pop/v6 v6.1.1
 	github.com/jackc/pgx/v4 v4.17.2
+	github.com/supabase/mailme v0.0.0-20230628061017-01f68480c747
 )
 
 require (

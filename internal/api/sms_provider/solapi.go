@@ -62,16 +62,16 @@ func ParsePhoneNumber(phone string) (string, string) {
 	return match[1], match[2]
 }
 
-func (t *SolapiProvider) SendMessage(phone string, message string, channel string) error {
+func (t *SolapiProvider) SendMessage(phone string, message string, channel string) (string, error) {
 	switch channel {
 	case SMSProvider:
 		return t.SendSms(phone, message)
 	default:
-		return fmt.Errorf("channel type %q is not supported for Solapi", channel)
+		return "", fmt.Errorf("channel type %q is not supported for Solapi", channel)
 	}
 }
 
-func (t *SolapiProvider) SendSms(phone string, message string) error {
+func (t *SolapiProvider) SendSms(phone string, message string) (string, error) {
 	country, phone := ParsePhoneNumber(phone)
 	client := &http.Client{Timeout: defaultTimeout}
 	body := map[string]map[string]interface{}{
@@ -85,41 +85,38 @@ func (t *SolapiProvider) SendSms(phone string, message string) error {
 	}
 	jsonString, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return "", err
 	}
 	request, err := http.NewRequest("POST", t.APIPath, bytes.NewBuffer(jsonString))
 	if err != nil {
-		return err
+		return "", err
 	}
 	request.Header.Add("Content-Type", "application/json")
 	request.Header.Add("Authorization", t.CreateAuthHeader())
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// StatusCode가 200이 아니라면 에러로 처리
 	if response.StatusCode != 200 {
 		errorStruct := SolapiError{}
 		err = json.NewDecoder(response.Body).Decode(&errorStruct)
 		if err != nil {
-			return err
+			return "", err
 		}
 		errString := fmt.Sprintf("%s[%d]:%s", errorStruct.ErrorCode, response.StatusCode, errorStruct.ErrorMessage)
-		return errors.New(errString)
+		return "", errors.New(errString)
 	}
 
 	customStruct := SolapiMessage{}
 	err = json.NewDecoder(response.Body).Decode(&customStruct)
 	if err != nil {
-		return err
+		return "", err
 	}
-
-	fmt.Printf("%s\n", &customStruct)
 
 	defer utilities.SafeClose(response.Body)
 
-	return nil
+	return customStruct.MessageId, nil
 }
 
 // RandomString returns a random string

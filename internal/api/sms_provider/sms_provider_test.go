@@ -183,18 +183,27 @@ func (ts *SmsProviderTestSuite) TestSolapiSendSms() {
 	phone := "123456789"
 	message := "This is the sms code: 123456"
 
-	body := url.Values{
-		"from":       {solapiProvider.Config.From},
-		"to":         {phone},
-		"text":       {message},
-		"api_key":    {solapiProvider.Config.ApiKey},
-		"api_secret": {solapiProvider.Config.ApiSecret},
+	gock.New(solapiProvider.APIPath).
+		Post("").
+		Reply(200).
+		JSON(SolapiMessage{
+			MessageId:     "1",
+			StatusCode:    "200",
+			GroupId:       "1",
+			AccountId:     "1",
+			StatusMessage: "OK",
+			To:            phone,
+			From:          solapiProvider.Config.From,
+			Type:          "SMS",
+			Country:       "1",
+		})
+
+	_, err = solapiProvider.SendSms(phone, message)
+
+	if err != nil {
+		fmt.Println("================= SOLAPI ERROR ===================")
+		fmt.Println(err)
 	}
-
-	// TODO: make this more concrete / specific?
-	gock.New(solapiProvider.APIPath).Post("").MatchType("url").BodyString(body.Encode()).Reply(200)
-
-	err = solapiProvider.SendSms(phone, message)
 	require.NoError(ts.T(), err)
 }
 
