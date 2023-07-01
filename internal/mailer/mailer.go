@@ -5,10 +5,10 @@ import (
 	"net/url"
 
 	"github.com/gofrs/uuid"
-	"github.com/netlify/mailme"
 	"github.com/sirupsen/logrus"
 	"github.com/supabase/gotrue/internal/conf"
 	"github.com/supabase/gotrue/internal/models"
+	"github.com/supabase/mailme"
 	"gopkg.in/gomail.v2"
 )
 
@@ -77,6 +77,7 @@ func getPath(filepath string, params map[string]string) (*url.URL, error) {
 	for key, val := range params {
 		v.Add(key, val)
 	}
-	path.RawQuery = v.Encode()
+	// this should never return an error because we're always encoding the values first
+	path.RawQuery, _ = url.QueryUnescape(v.Encode())
 	return path, nil
 }

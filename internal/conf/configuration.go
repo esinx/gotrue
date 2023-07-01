@@ -19,12 +19,12 @@ const defaultFlowStateExpiryDuration time.Duration = 300 * time.Second
 
 // OAuthProviderConfiguration holds all config related to external account providers.
 type OAuthProviderConfiguration struct {
-	ClientID    string `json:"client_id" split_words:"true"`
-	Secret      string `json:"secret"`
-	RedirectURI string `json:"redirect_uri" split_words:"true"`
-	URL         string `json:"url"`
-	ApiURL      string `json:"api_url" split_words:"true"`
-	Enabled     bool   `json:"enabled"`
+	ClientID    []string `json:"client_id" split_words:"true"`
+	Secret      string   `json:"secret"`
+	RedirectURI string   `json:"redirect_uri" split_words:"true"`
+	URL         string   `json:"url"`
+	ApiURL      string   `json:"api_url" split_words:"true"`
+	Enabled     bool     `json:"enabled"`
 }
 
 type EmailProviderConfiguration struct {
@@ -58,6 +58,8 @@ type JWTConfiguration struct {
 	AdminGroupName   string   `json:"admin_group_name" split_words:"true"`
 	AdminRoles       []string `json:"admin_roles" split_words:"true"`
 	DefaultGroupName string   `json:"default_group_name" split_words:"true"`
+	Issuer           string   `json:"issuer"`
+	KeyID            string   `json:"key_id" split_words:"true"`
 }
 
 // MFAConfiguration holds all the MFA related Configuration
@@ -95,8 +97,9 @@ type GlobalConfiguration struct {
 	API                   APIConfiguration
 	DB                    DBConfiguration
 	External              ProviderConfiguration
-	Logging               LoggingConfig `envconfig:"LOG"`
-	OperatorToken         string        `split_words:"true" required:"false"`
+	Logging               LoggingConfig  `envconfig:"LOG"`
+	Profiler              ProfilerConfig `envconfig:"PROFILER"`
+	OperatorToken         string         `split_words:"true" required:"false"`
 	Tracing               TracingConfig
 	Metrics               MetricsConfig
 	SMTP                  SMTPConfiguration
@@ -142,6 +145,7 @@ type ProviderConfiguration struct {
 	Bitbucket               OAuthProviderConfiguration `json:"bitbucket"`
 	Discord                 OAuthProviderConfiguration `json:"discord"`
 	Facebook                OAuthProviderConfiguration `json:"facebook"`
+	Figma                   OAuthProviderConfiguration `json:"figma"`
 	Github                  OAuthProviderConfiguration `json:"github"`
 	Gitlab                  OAuthProviderConfiguration `json:"gitlab"`
 	Google                  OAuthProviderConfiguration `json:"google"`
@@ -192,20 +196,27 @@ type PhoneProviderConfiguration struct {
 }
 
 type SmsProviderConfiguration struct {
-	Autoconfirm  bool                             `json:"autoconfirm"`
-	MaxFrequency time.Duration                    `json:"max_frequency" split_words:"true"`
-	OtpExp       uint                             `json:"otp_exp" split_words:"true"`
-	OtpLength    int                              `json:"otp_length" split_words:"true"`
-	Provider     string                           `json:"provider"`
-	Template     string                           `json:"template"`
-	Twilio       TwilioProviderConfiguration      `json:"twilio"`
-	Messagebird  MessagebirdProviderConfiguration `json:"messagebird"`
-	Solapi       SolapiProviderConfiguration      `json:"solapi"`
-	Textlocal    TextlocalProviderConfiguration   `json:"textlocal"`
-	Vonage       VonageProviderConfiguration      `json:"vonage"`
+	Autoconfirm  bool                              `json:"autoconfirm"`
+	MaxFrequency time.Duration                     `json:"max_frequency" split_words:"true"`
+	OtpExp       uint                              `json:"otp_exp" split_words:"true"`
+	OtpLength    int                               `json:"otp_length" split_words:"true"`
+	Provider     string                            `json:"provider"`
+	Template     string                            `json:"template"`
+	Twilio       TwilioProviderConfiguration       `json:"twilio"`
+	TwilioVerify TwilioVerifyProviderConfiguration `json:"twilio_verify" split_words:"true"`
+	Solapi       SolapiProviderConfiguration       `json:"solapi"`
+	Messagebird  MessagebirdProviderConfiguration  `json:"messagebird"`
+	Textlocal    TextlocalProviderConfiguration    `json:"textlocal"`
+	Vonage       VonageProviderConfiguration       `json:"vonage"`
 }
 
 type TwilioProviderConfiguration struct {
+	AccountSid        string `json:"account_sid" split_words:"true"`
+	AuthToken         string `json:"auth_token" split_words:"true"`
+	MessageServiceSid string `json:"message_service_sid" split_words:"true"`
+}
+
+type TwilioVerifyProviderConfiguration struct {
 	AccountSid        string `json:"account_sid" split_words:"true"`
 	AuthToken         string `json:"auth_token" split_words:"true"`
 	MessageServiceSid string `json:"message_service_sid" split_words:"true"`
@@ -452,15 +463,15 @@ func (c *GlobalConfiguration) Validate() error {
 	return nil
 }
 
-func (o *OAuthProviderConfiguration) Validate() error {
+func (o *OAuthProviderConfiguration) ValidateOAuth() error {
 	if !o.Enabled {
 		return errors.New("provider is not enabled")
 	}
-	if o.ClientID == "" {
-		return errors.New("missing Oauth client ID")
+	if len(o.ClientID) == 0 {
+		return errors.New("missing OAuth client ID")
 	}
 	if o.Secret == "" {
-		return errors.New("missing Oauth secret")
+		return errors.New("missing OAuth secret")
 	}
 	if o.RedirectURI == "" {
 		return errors.New("missing redirect URI")
@@ -469,6 +480,19 @@ func (o *OAuthProviderConfiguration) Validate() error {
 }
 
 func (t *TwilioProviderConfiguration) Validate() error {
+	if t.AccountSid == "" {
+		return errors.New("missing Twilio account SID")
+	}
+	if t.AuthToken == "" {
+		return errors.New("missing Twilio auth token")
+	}
+	if t.MessageServiceSid == "" {
+		return errors.New("missing Twilio message service SID or Twilio phone number")
+	}
+	return nil
+}
+
+func (t *TwilioVerifyProviderConfiguration) Validate() error {
 	if t.AccountSid == "" {
 		return errors.New("missing Twilio account SID")
 	}
@@ -525,4 +549,8 @@ func (t *VonageProviderConfiguration) Validate() error {
 		return errors.New("missing Vonage 'from' parameter")
 	}
 	return nil
+}
+
+func (t *SmsProviderConfiguration) IsTwilioVerifyProvider() bool {
+	return t.Provider == "twilio_verify"
 }
